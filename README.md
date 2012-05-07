@@ -15,14 +15,17 @@ Imports [Poemspace](http://www.poem-space.com) data dump of the
   1. start DeepaMehta 4 and install the Poemspace plugin
   2. save the DeepaMehta 3 dump in the data directory
   3. install dependencies and run the importer
+
 ```shell
 npm install
 ```
-    import data data/poemspace-dump.json
+
+import data data/poemspace-dump.json
 ```shell
 npm start
 ```
-    or an other file
+
+or an other file
 ```shell
 coffee src/import.coffee data/poemspace-dump-20120421.json
 ```
