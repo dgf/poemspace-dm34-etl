@@ -1,29 +1,70 @@
-{print} = require 'util'
-{spawn} = require 'child_process'
-jasmineBinary = './node_modules/.bin/jasmine-node'
+fs = require 'fs'
+path = require 'path'
+log = require 'winston'
 
-green = '\033[0;32m'
-reset = '\033[0m'
-red = '\033[0;31m'
+Stage = require './src/StagingArea'
+stage = new Stage()
 
-log = (message, color) ->
+green = '\x1b[0;32m'
+reset = '\x1b[0m'
+red = '\x1b[0;31m'
+
+configureFileLog = (filename, append = false) ->
+  unless append
+    try
+      fs.unlinkSync filename
+    catch e
+      throw e unless e.code is 'ENOENT'
+  log.add log.transports.File,
+    filename: filename
+    json: false
+  log.remove log.transports.Console
+
+logMessage = (message, color = reset) ->
   console.log color + message + reset
 
-call = (name, options, callback) ->
-  proc = spawn name, options
-  proc.stdout.on 'data', (data) -> print data.toString()
-  proc.stderr.on 'data', (data) -> log data.toString(), red
-  proc.on 'exit', callback
+logComplete = (err) ->
+  uptime = Math.round(process.uptime() * 100) / 100
+  if err?
+    logMessage ":( #{uptime}s", red
+  else
+    logMessage ":) #{uptime}s", green
 
-build = (callback) ->
-  call 'coffee', ['-c', '-o', 'lib', 'src'], callback
+createDirectory = (path) ->
+  try
+    stat = fs.statSync(path)
+    throw new Error 'init path ' + path unless stat.isDirectory()
+  catch e
+    if e.code is 'ENOENT' then fs.mkdirSync path else throw e
 
-spec = (callback) ->
-  call jasmineBinary, ['spec', '--coffee', '--verbose'], callback
+# pre check environment
+createDirectory('log')
+createDirectory('stage')
 
-logSuccess = (status) ->
-  log ":)", green if status is 0
+task 'extract', 'extract DM3 poem space dump data', ->
+  configureFileLog path.join 'log', 'extract'
+  require('./src/extract') log, stage, logComplete,
+    path.join 'data', 'poemspace-dump-20120421.json'
 
-task 'build', 'build coffee', -> build logSuccess
+task 'clean', 'clean extracted instances', ->
+  configureFileLog path.join 'log', 'clean'
+  require('./src/clean') log, stage, logComplete
 
-task 'spec', 'run specifications', -> spec logSuccess
+option '-t', '--type [TYPE]', 'set the type name of CSV import'
+task 'importCSV', 'import data from CSV file', (options) ->
+  if options.type
+    console.log options
+    data = stage.getCSV options.type
+    stage.saveInstances options.type, data, logComplete
+
+task 'conform', 'conform topic instances and relations', ->
+  configureFileLog path.join 'log', 'conform'
+  require('./src/conform') log, stage, logComplete
+
+task 'deliver', 'deliver instances as DM topics', ->
+  configureFileLog path.join 'log', 'deliver'
+  require('./src/deliver') log, stage, logComplete
+
+task 'relate', 'deliver associations and relate mails', ->
+  configureFileLog path.join 'log', 'relate'
+  require('./src/relate') log, stage, logComplete
