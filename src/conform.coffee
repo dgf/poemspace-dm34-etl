@@ -8,6 +8,11 @@ createIdsByNameHash = (instances) ->
     idsByName[instance.Name] = id
   idsByName
 
+unique = (values) ->
+  output = {}
+  output[values[i]] = values[i] for i in [0...values.length]
+  value for key, value of output
+
 module.exports = (log, stage, done) ->
   #
   recipients = []
@@ -16,23 +21,25 @@ module.exports = (log, stage, done) ->
   persons = createIdsByNameHash stage.getInstances 'Person'
   institutions = createIdsByNameHash stage.getInstances 'Institution'
 
+  findMailRelation = (id, name, type, relations) ->
+    if name
+      rId = persons[name] ? institutions[name]
+      unless rId
+        log.info "ignore mail #{id} #{type} relation #{name}"
+      else
+        log.info "add mail #{id} #{type} relation #{name}"
+        relations.push
+          mail: id
+          id: rId
+          type: type
+
   findMailRelations = (id, mail, type, relations) ->
     if mail[type]
-      for n in mail[type].split ','
-        name = n.trim()
-        if name
-          rId = persons[name] ? institutions[name]
-          unless rId
-            log.info "ignore mail #{id} #{type} relation #{name}"
-          else
-            log.info "add mail #{id} #{type} relation #{name}"
-            relations.push
-              mail: id
-              id: rId
-              type: type
+      for n in unique mail[type].split ','
+        findMailRelation id, n.trim(), type, relations
 
   for id, mail of mails
-    findMailRelations id, mail, 'From', sender
+    findMailRelation id, mail['From'], 'From', sender
     for type in ['To', 'Cc', 'Bcc']
       findMailRelations id, mail, type, recipients
 

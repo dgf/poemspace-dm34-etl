@@ -8,7 +8,7 @@ async = require 'async'
 # constants
 directory = 'stage'
 relationsFile = path.join directory, 'Relation.json'
-COLSEP = ';'
+COLSEP = '\t'
 
 # file name path joining
 getFilename = (type, suffix) -> path.join(directory, type) + suffix
@@ -38,7 +38,7 @@ loadRelations = ->
 saveCSV = (type, data, cols, done) ->
   file = fs.createWriteStream getCsvFilename(type)
   file.on 'close', done
-  file.write 'id;' + cols.join(COLSEP) + '\n'
+  file.write 'id\t' + cols.join(COLSEP) + '\n'
   for id, instance of data
     line = [id]
     for col in cols

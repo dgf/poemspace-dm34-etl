@@ -2,54 +2,61 @@
 
 async = require 'async'
 _ = require 'underscore'
-dm4client = require 'dm4client'
+dm4 = require('dm4client').create()
+
+trimChars = (string, chars) ->
+  s = string
+  remove = (pattern) -> s = s.replace pattern, ''
+  for char in chars
+    remove new RegExp '^' + char
+    remove new RegExp char + '$'
+  s
+
+sanitize = (string) ->
+  if string?
+    trimChars string.trim(), [',', ';']
+  else
+    'n/a'
 
 mapContact = (composite, values) ->
-  if values.Notes
-    composite['dm4.contacts.notes'] = values.Notes
+  composite['dm4.contacts.notes'] = sanitize values.Notes if values.Notes
   if values.Phone
     composite['dm4.contacts.phone_entry'] = []
     for phone in values.Phone.split '\n'
       composite['dm4.contacts.phone_entry'].push
-        'dm4.contacts.phone_number': phone
+        'dm4.contacts.phone_number': sanitize phone
   if values.Email
     composite['dm4.contacts.email_address'] = []
     for mail in values.Email.split '\n'
-      composite['dm4.contacts.email_address'].push mail
+      composite['dm4.contacts.email_address'].push sanitize mail
   if values.Website
     composite['dm4.webbrowser.url'] = []
     for site in values.Website.split '\n'
-      composite['dm4.webbrowser.url'].push site
+      composite['dm4.webbrowser.url'].push sanitize site
 
 mapPersonName = (composite, values = {}) ->
   name = {}
-  if values.Firstname
-    name['dm4.contacts.first_name'] = values.Firstname
-  if values.Lastname
-    name['dm4.contacts.last_name'] = values.Lastname
+  name['dm4.contacts.first_name'] = sanitize values.Firstname if values.Firstname
+  name['dm4.contacts.last_name'] = sanitize values.Lastname if values.Lastname
   composite['dm4.contacts.person_name'] = name
 
 mapAddress = (composite, values = {}) ->
   address = {}
-  if values.Street
-    address['dm4.contacts.street'] = values.Street
-  if values.Zipcode
-    address['dm4.contacts.postal_code'] = values.Zipcode
-  if values.City
-    address['dm4.contacts.city'] = values.City
-  if values.Country
-    address['dm4.contacts.country'] = values.Country
+  address['dm4.contacts.street'] = sanitize values.Street if values.Street
+  address['dm4.contacts.postal_code'] = sanitize values.Zipcode if values.Zipcode
+  address['dm4.contacts.city'] = sanitize values.City if values.City
+  address['dm4.contacts.country'] = sanitize values.Country if values.Country
   composite['dm4.contacts.address_entry'] = [
     'dm4.contacts.address': address
   ]
+  if values.Residual
+    notes = composite['dm4.contacts.notes'] ? ''
+    composite['dm4.contacts.notes'] = values.Residual.replace('#', '<br/>\n') + '<br/>\n' + notes
 
 module.exports = (log, stage, done) ->
 
   # cache created topics by import data id
   topicsById = {}
-
-  # connect dm4client
-  dm4 = dm4client.create()
 
   # create and cache a topic
   createTopic = (id, values, onSuccess) ->
@@ -63,7 +70,7 @@ module.exports = (log, stage, done) ->
     unless values[field]
       async.nextTick onSuccess
     else
-      createTopic id, { type_uri: uri, value: values[field] }, onSuccess
+      createTopic id, { type_uri: uri, value: sanitize values[field] }, onSuccess
 
   # preload addresses and person names
   addressesByInstanceId = stage.getInstances 'Address'
@@ -71,6 +78,14 @@ module.exports = (log, stage, done) ->
 
   # configure topic handle by type
   typeMapping =
+
+    'Account': (id, values, callback) ->
+      a =
+        type_uri: 'dm4.accesscontrol.user_account'
+        composite:
+          'dm4.accesscontrol.username': values.Username
+          'dm4.accesscontrol.password': values.Password
+      createTopic id, a, callback
 
     'Bezirk': (id, values, callback) ->
       createValueTopic 'dm4.poemspace.bezirk', id, values, 'Name', callback
@@ -86,9 +101,9 @@ module.exports = (log, stage, done) ->
         t =
           type_uri: 'dm4.mail'
           composite:
-            'dm4.mail.subject': values.Subject
+            'dm4.mail.subject': sanitize values.Subject
         if values.Message
-          t.composite['dm4.mail.body'] = values.Message
+          t.composite['dm4.mail.body'] = sanitize values.Message
         createTopic id, t, callback
 
     'Institution': (id, values, callback) ->
@@ -99,7 +114,7 @@ module.exports = (log, stage, done) ->
         t =
           type_uri: 'dm4.contacts.institution'
           composite:
-            'dm4.contacts.institution_name': values.Name
+            'dm4.contacts.institution_name': sanitize values.Name
         mapContact t.composite, values
         mapAddress t.composite, addressesByInstanceId[id]
         createTopic id, t, callback
@@ -112,8 +127,8 @@ module.exports = (log, stage, done) ->
         t =
           type_uri: 'dm4.notes.note'
           composite:
-            'dm4.notes.text': values.Body
-            'dm4.notes.title': values.Title
+            'dm4.notes.text': sanitize values.Body
+            'dm4.notes.title': sanitize values.Title
         createTopic id, t, callback
 
     'Kiez': (id, values, callback) ->
@@ -143,7 +158,7 @@ module.exports = (log, stage, done) ->
         t =
           type_uri: 'dm4.poemspace.list'
           composite:
-            'dm4.poemspace.listname': values.Name
+            'dm4.poemspace.listname': sanitize values.Name
         createTopic id, t, callback
 
   # call corresponding type mapping
@@ -161,20 +176,24 @@ module.exports = (log, stage, done) ->
   # create mapped topic instances
   createTopics = (type, callback) ->
     instances = arrayfie type, stage.getInstances type
-    async.forEachLimit instances, 10, transferInstanceTopic, callback
+    async.forEachLimit instances, 1, transferInstanceTopic, callback
 
-  async.forEachSeries [
-    'Bezirk'
-    'Einrichtungsart'
-    'Email'
-    'Institution'
-    'Kiez'
-    'Kunstgattung'
-    'Note'
-    'Person'
-    'Workspace'
-  ], createTopics, (err) ->
-    if err
-      done err
-    else
-      stage.saveInstances 'Topic', topicsById, done
+  # login and open default workspace
+  dm4.login 'admin', 'password', (session) ->
+    dm4.openSpace 'de.workspaces.deepamehta', (workspaceId) ->
+      async.forEachSeries [
+        'Account'
+        'Bezirk'
+        'Einrichtungsart'
+        'Email'
+        'Institution'
+        'Kiez'
+        'Kunstgattung'
+        'Note'
+        'Person'
+        'Workspace'
+      ], createTopics, (err) ->
+        if err
+          done err
+        else
+          stage.saveInstances 'Topic', topicsById, done

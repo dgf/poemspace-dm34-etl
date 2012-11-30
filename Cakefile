@@ -44,7 +44,7 @@ createDirectory('stage')
 task 'extract', 'extract DM3 poem space dump data', ->
   configureFileLog path.join 'log', 'extract'
   require('./src/extract') log, stage, logComplete,
-    path.join 'data', 'poemspace-dump-20120421.json'
+    path.join 'data', 'poemspace-dump-20121109.json'
 
 task 'clean', 'clean extracted instances', ->
   configureFileLog path.join 'log', 'clean'
