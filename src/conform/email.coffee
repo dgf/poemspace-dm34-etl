@@ -1,17 +1,13 @@
-# III. conform mail recipients and sender
+# conform mail recipients and sender
 
 async = require 'async'
+{unique} = require '../etl.tools'
 
 createIdsByNameHash = (instances) ->
   idsByName = {}
   for id, instance of instances
     idsByName[instance.Name] = id
   idsByName
-
-unique = (values) ->
-  output = {}
-  output[values[i]] = values[i] for i in [0...values.length]
-  value for key, value of output
 
 module.exports = (log, stage, done) ->
   #

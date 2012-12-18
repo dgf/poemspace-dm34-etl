@@ -1,22 +1,8 @@
-# IV. deliver topics and associations 
+# deliver topics
 
 async = require 'async'
 _ = require 'underscore'
-dm4 = require('dm4client').create()
-
-trimChars = (string, chars) ->
-  s = string
-  remove = (pattern) -> s = s.replace pattern, ''
-  for char in chars
-    remove new RegExp '^' + char
-    remove new RegExp char + '$'
-  s
-
-sanitize = (string) ->
-  if string?
-    trimChars string.trim(), [',', ';']
-  else
-    'n/a'
+{sanitize} = require '../etl.tools'
 
 mapContact = (composite, values) ->
   composite['dm4.contacts.notes'] = sanitize values.Notes if values.Notes
@@ -40,20 +26,8 @@ mapPersonName = (composite, values = {}) ->
   name['dm4.contacts.last_name'] = sanitize values.Lastname if values.Lastname
   composite['dm4.contacts.person_name'] = name
 
-mapAddress = (composite, values = {}) ->
-  address = {}
-  address['dm4.contacts.street'] = sanitize values.Street if values.Street
-  address['dm4.contacts.postal_code'] = sanitize values.Zipcode if values.Zipcode
-  address['dm4.contacts.city'] = sanitize values.City if values.City
-  address['dm4.contacts.country'] = sanitize values.Country if values.Country
-  composite['dm4.contacts.address_entry'] = [
-    'dm4.contacts.address': address
-  ]
-  if values.Residual
-    notes = composite['dm4.contacts.notes'] ? ''
-    composite['dm4.contacts.notes'] = values.Residual.replace('#', '<br/>\n') + '<br/>\n' + notes
 
-module.exports = (log, stage, done) ->
+module.exports = (log, stage, dm4, done) ->
 
   # cache created topics by import data id
   topicsById = {}
@@ -61,7 +35,7 @@ module.exports = (log, stage, done) ->
   # create and cache a topic
   createTopic = (id, values, onSuccess) ->
     dm4.createTopic values, (topic) ->
-      log.info "#{topic.type_uri}: #{topic.id} created"
+      log.info "#{topic.type_uri} #{topic.id} created"
       topicsById[id] = topic
       onSuccess()
 
@@ -75,17 +49,40 @@ module.exports = (log, stage, done) ->
   # preload addresses and person names
   addressesByInstanceId = stage.getInstances 'Address'
   namesByInstanceId = stage.getInstances 'PersonName'
+  cities = stage.getInstances 'City'
+  countries = stage.getInstances 'Country'
+  streets = stage.getInstances 'Street'
+  zipCodes = stage.getInstances 'Zipcode'
+
+  # map address part aggregations
+  mapAddress = (composite, values = {}) ->
+    address = {}
+    country = countries[sanitize values.Country] ? countries['Deutschland']
+    address['dm4.contacts.street'] = 'ref_id:' + streets[sanitize values.Street].id
+    address['dm4.contacts.postal_code'] = 'ref_id:' + zipCodes[sanitize values.Zipcode].id
+    address['dm4.contacts.city'] = 'ref_id:' + cities[sanitize values.City].id
+    address['dm4.contacts.country'] = 'ref_id:' + country.id
+    composite['dm4.contacts.address_entry'] = [
+      'dm4.contacts.address': address
+    ]
+    if values.Residual
+      notes = composite['dm4.contacts.notes'] ? ''
+      composite['dm4.contacts.notes'] = values.Residual.replace('#', '<br/>\n') + '<br/>\n' + notes
+
 
   # configure topic handle by type
   typeMapping =
 
     'Account': (id, values, callback) ->
-      a =
-        type_uri: 'dm4.accesscontrol.user_account'
-        composite:
-          'dm4.accesscontrol.username': values.Username
-          'dm4.accesscontrol.password': values.Password
-      createTopic id, a, callback
+      if values.Username is 'admin'
+        callback()
+      else
+        a =
+          type_uri: 'dm4.accesscontrol.user_account'
+          composite:
+            'dm4.accesscontrol.username': values.Username
+            'dm4.accesscontrol.password': values.Password
+        createTopic id, a, callback
 
     'Bezirk': (id, values, callback) ->
       createValueTopic 'dm4.poemspace.bezirk', id, values, 'Name', callback
@@ -168,32 +165,28 @@ module.exports = (log, stage, done) ->
   # create array from object, save key as id value
   arrayfie = (type, object) ->
     for id, values of object
-      result =
-        id: id
-        type: type
-        values: values
+      id: id
+      type: type
+      values: values
 
   # create mapped topic instances
   createTopics = (type, callback) ->
     instances = arrayfie type, stage.getInstances type
     async.forEachLimit instances, 1, transferInstanceTopic, callback
 
-  # login and open default workspace
-  dm4.login 'admin', 'password', (session) ->
-    dm4.openSpace 'de.workspaces.deepamehta', (workspaceId) ->
-      async.forEachSeries [
-        'Account'
-        'Bezirk'
-        'Einrichtungsart'
-        'Email'
-        'Institution'
-        'Kiez'
-        'Kunstgattung'
-        'Note'
-        'Person'
-        'Workspace'
-      ], createTopics, (err) ->
-        if err
-          done err
-        else
-          stage.saveInstances 'Topic', topicsById, done
+  async.forEachSeries [
+    'Account'
+    'Bezirk'
+    'Einrichtungsart'
+    'Email'
+    'Institution'
+    'Kiez'
+    'Kunstgattung'
+    'Note'
+    'Person'
+    'Workspace'
+  ], createTopics, (err) ->
+    if err
+      done err
+    else
+      stage.saveInstances 'Topic', topicsById, done

@@ -2,14 +2,13 @@
 # clean and export addresses and person contacts
 
 async = require 'async'
-_ = require 'underscore'
 
 module.exports = (log, stage, done) ->
   saveAndExport = (type, instances, callback, cols) ->
     stage.saveInstances type, instances, ->
       stage.saveCSV type, instances, cols, callback
 
-  async.parallel
+  async.series
     addresses: (callback) ->
       require('./address') log, stage, callback
     names: (callback) ->
@@ -17,10 +16,10 @@ module.exports = (log, stage, done) ->
     , (err, results) ->
       done err if err?
 
-      # persist addresses and contacts
-      async.parallel [
+      # persist addresses and person names
+      async.series [
         (callback) -> saveAndExport 'Address', results.addresses, callback,
-          cols = ['type', 'Street', 'Zipcode', 'City', 'Country', 'Residual', 'mail']
+          cols = ['type', 'Street', 'Zipcode', 'City', 'Country', 'Residual']
         (callback) -> saveAndExport 'PersonName', results.names, callback,
           cols = ['Firstname', 'Lastname']
       ], done

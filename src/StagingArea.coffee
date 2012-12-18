@@ -26,7 +26,7 @@ loadCSV = (type) ->
     if instance.id
       data[instance.id] = instance
     else
-      util.error 'CSV entry without ID', instance
+      util.error 'CSV entry without ID', line if line
   data
 
 loadInstances = (type) ->

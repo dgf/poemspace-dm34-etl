@@ -41,16 +41,16 @@ createDirectory = (path) ->
 createDirectory('log')
 createDirectory('stage')
 
-task 'extract', 'extract DM3 poem space dump data', ->
+option '-d', '--dump [DUMP]', 'file name of DM3 export'
+task 'extract', 'extract DM3 poem space dump data', (options) ->
   configureFileLog path.join 'log', 'extract'
-  require('./src/extract') log, stage, logComplete,
-    path.join 'data', 'poemspace-dump-20121109.json'
+  require('./src/extract') log, stage, logComplete, options.dump
 
 task 'clean', 'clean extracted instances', ->
   configureFileLog path.join 'log', 'clean'
   require('./src/clean') log, stage, logComplete
 
-option '-t', '--type [TYPE]', 'set the type name of CSV import'
+option '-t', '--type [TYPE]', 'type name of CSV import'
 task 'importCSV', 'import data from CSV file', (options) ->
   if options.type
     console.log options

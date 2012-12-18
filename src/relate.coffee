@@ -115,7 +115,7 @@ module.exports = (log, stage, done) ->
     async.forEachLimit sender, 1, createSender, callback
 
   # login and open default workspace
-  dm4.login 'admin', 'password', (session) ->
+  dm4.login 'admin', '', (session) ->
     dm4.openSpace 'de.workspaces.deepamehta', (workspaceId) ->
       getRecipientTypes (types) ->
         createRelations (err) ->
