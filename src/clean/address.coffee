@@ -75,9 +75,7 @@ module.exports = (log, stage, done) ->
     for id, instance of instances
       address = instance.Address
       if address
-        addresses[id] = _.extend mapAddress(address),
-          type: type
-          mail: instance.Email
+        addresses[id] = _.extend mapAddress(address), type: type
 
   cleanAndHashAddresses 'Person'
   cleanAndHashAddresses 'Institution'
