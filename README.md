@@ -32,7 +32,54 @@ cake conform              # conform topic instances and relations
 cake deliver              # deliver instances as DM topics
 cake relate               # deliver associations and relate mails
 
-  -t, --type         set the type name of CSV import
+  -d, --dump         file name of DM3 export
+  -t, --type         type name of CSV import
 ```
 
 There is no special configuration, so please customize the Cakefile directly.
+
+## import process
+
+### extract
+
+configure dump filename or use the default path './data/poemspace-dump.json'
+
+```shell
+$ cake -d ./data/poemspace-dump-20121216.json extract
+```
+
+### clean
+
+split address lines and separate person names
+
+```shell
+$ cake clean
+```
+
+and now use the chance to edit the addresses and names in a spreadsheet
+open 'stage/Address.csv' as tab separated CSV and import it back with
+$ cake -t (Address|PersonName) importCSV # optional
+
+
+### deliver
+
+start a fresh DM 4 instance with the Poem Space plugin (migrationNr=12)
+
+import all topics and address parts to DM 4 at localhost with
+
+```shell
+$ cake deliver
+```
+
+### relate
+
+import all relations and create recipent/sender associations
+
+```shell
+$ cake relate
+```
+
+### customer specific content migrations
+
+change the migrationNr to 14 and reload the plugin
+
